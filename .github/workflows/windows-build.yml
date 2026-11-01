@@ -1,0 +1,48 @@
+name: Build Windows app and installer
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: "x64"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build application executables
+        run: python build.py
+
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc ".\installer.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload portable executables and installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: WiZ-Ambient-Sync-Windows-x64
+          path: |
+            dist/WiZAmbientSync.exe
+            dist/wiz-engine.exe
+            installer-output/WiZ-Ambient-Sync-Beta-Setup-1.1.0-beta.1-x64.exe
+          if-no-files-found: error

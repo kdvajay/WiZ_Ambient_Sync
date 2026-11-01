@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.vscode/
+build/
+dist/
+installer-output/
+*.log
+*.spec
+.DS_Store
+Thumbs.db
+
+# Local device/control configuration
+*.local.json
+device-control.json
