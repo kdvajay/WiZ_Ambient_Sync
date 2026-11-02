@@ -29,13 +29,16 @@ certificate can be supplied with `-CertificatePath` and
 The separate workflow is [`.github/workflows/windows-msix.yml`](./.github/workflows/windows-msix.yml).
 It uses Python 3.12, reuses `build.py`, and uploads an unsigned MSIX artifact.
 
-Set these repository variables before producing a Store-bound package:
+The workflow includes the current Partner Center identity as its fallback. You
+may also set these repository variables to keep the identity configurable:
 
 - `MSIX_IDENTITY_NAME` — the exact package identity assigned by Partner Center.
 - `MSIX_PUBLISHER` — the exact publisher string assigned by Partner Center.
 
-The fallback values are suitable only for local inspection and must not be
-used for Store submission.
+The current fallback values are:
+
+- `Kdvajay.WiZAmbientSync`
+- `CN=8996203F-A5D5-4486-9239-288C30EF9DE1`
 
 ## Package behavior
 

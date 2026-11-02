@@ -12,7 +12,7 @@
     ProcessorArchitecture="x64" />
   <Properties>
     <DisplayName>WiZ Ambient Sync</DisplayName>
-    <PublisherDisplayName>WiZ Ambient Sync</PublisherDisplayName>
+    <PublisherDisplayName>Kdvajay</PublisherDisplayName>
     <Description>Music-reactive lighting for WiZ devices using local audio, screen colours, and LAN control.</Description>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>

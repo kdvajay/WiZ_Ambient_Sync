@@ -10,8 +10,8 @@ jobs:
   build-msix:
     runs-on: windows-latest
     env:
-      MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME || 'WiZAmbientSync' }}
-      MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER || 'CN=WiZ Ambient Sync' }}
+      MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME || 'Kdvajay.WiZAmbientSync' }}
+      MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER || 'CN=8996203F-A5D5-4486-9239-288C30EF9DE1' }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
