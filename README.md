@@ -9,6 +9,13 @@ The result is designed to feel less like a sequence of light commands and more l
 > Current release: **1.2.2-beta.1**
 > This repository contains the source and build configuration. It does not contain precompiled installers.
 
+ ## Download
+
+[![Download Latest Release](https://img.shields.io/github/v/release/kdvajay/WiZ_Ambient_Sync)](https://github.com/kdvajay/WiZ_Ambient_Sync/releases/latest)
+
+Download the latest compiled Windows application:
+[WiZ Ambient Sync](https://github.com/kdvajay/WiZ_Ambient_Sync/releases/latest)
+
 ## What the application does
 
 ### A complete desktop control surface
