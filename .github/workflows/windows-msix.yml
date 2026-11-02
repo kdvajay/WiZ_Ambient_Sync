@@ -1,0 +1,39 @@
+name: Build Windows MSIX
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-msix:
+    runs-on: windows-latest
+    env:
+      MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME || 'WiZAmbientSync' }}
+      MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER || 'CN=WiZ Ambient Sync' }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: "x64"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build and package MSIX
+        shell: pwsh
+        run: .\build-msix.ps1 -BuildExecutables
+
+      - name: Upload unsigned MSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: WiZ-Ambient-Sync-MSIX-x64
+          path: msix-output/*.msix
+          if-no-files-found: error
