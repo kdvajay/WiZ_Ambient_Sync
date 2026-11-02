@@ -27,6 +27,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Locate Windows SDK packaging tools
+        shell: pwsh
+        run: |
+          $sdkBin = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin"
+          $makeAppx = Get-ChildItem -Path $sdkBin -Filter makeappx.exe -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match "\\x64\\makeappx\.exe$" } |
+            Sort-Object FullName |
+            Select-Object -Last 1
+          if (-not $makeAppx) { throw "x64 makeappx.exe was not found under $sdkBin" }
+          Split-Path $makeAppx.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Write-Host "Using $($makeAppx.FullName)"
+
       - name: Build and package MSIX
         shell: pwsh
         run: .\build-msix.ps1 -BuildExecutables
