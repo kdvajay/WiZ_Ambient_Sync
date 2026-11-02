@@ -276,4 +276,10 @@ WiZ Ambient Sync is an evolving beta project. The current release focuses on a c
 
 ## License
 
-No license file is currently included in this repository. Treat the project as source-available for evaluation and development until an explicit license is added.
+## 📄 License
+
+This project is licensed under the **MIT License**.
+
+You are free to use, modify, and distribute this software, including for commercial purposes, provided that the original copyright and license notice are included.
+
+See the [LICENSE](LICENSE) file for the full license text.
