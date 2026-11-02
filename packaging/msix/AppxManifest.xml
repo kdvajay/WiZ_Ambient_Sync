@@ -25,6 +25,11 @@
       MinVersion="10.0.17763.0"
       MaxVersionTested="10.0.26100.0" />
   </Dependencies>
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <Capability Name="privateNetworkClientServer" />
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
   <Applications>
     <Application
       Id="App"
@@ -49,9 +54,4 @@
       </Extensions>
     </Application>
   </Applications>
-  <Capabilities>
-    <Capability Name="internetClient" />
-    <Capability Name="privateNetworkClientServer" />
-    <rescap:Capability Name="runFullTrust" />
-  </Capabilities>
 </Package>
