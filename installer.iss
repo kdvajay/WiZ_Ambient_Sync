@@ -1,5 +1,5 @@
 #define MyAppName "WiZ Ambient Sync Beta"
-#define MyAppVersion "1.2.2-beta.1"
+#define MyAppVersion "2.0.0"
 #define MyAppPublisher "WiZ Ambient Sync"
 #define MyAppExeName "WiZAmbientSync.exe"
 
@@ -13,7 +13,7 @@ DefaultDirName={autopf}\WiZ Ambient Sync Beta
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=installer-output
-OutputBaseFilename=WiZ-Ambient-Sync-Beta-Setup-{#MyAppVersion}-x64
+OutputBaseFilename=WiZ-Ambient-Sync-Setup-{#MyAppVersion}-x64
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -25,8 +25,8 @@ CloseApplications=yes
 RestartApplications=no
 
 [Files]
-Source: "dist\1.2.2-beta.1\WiZAmbientSync.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "dist\1.2.2-beta.1\wiz-engine.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\2.0.0\WiZAmbientSync.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\2.0.0\wiz-engine.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app\app_icon.png"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

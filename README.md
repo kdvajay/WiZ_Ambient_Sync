@@ -6,7 +6,7 @@ It is a local-first desktop application with a Qt interface and a dedicated asyn
 
 The result is designed to feel less like a sequence of light commands and more like a continuous visual performance: quiet passages breathe, bass gives the room weight, transients create momentum, and screen colour supplies the palette.
 
-> Current release: **1.2.2-beta.1**
+> Current release: **2.0.0**
 > This repository contains the source and build configuration. It does not contain precompiled installers.
 
  ## Download
@@ -142,7 +142,7 @@ pip install -r requirements.txt
 python build.py
 ```
 
-The versioned output is written to `dist\1.2.2-beta.1\`.
+The versioned output is written to `dist\2.0.0\`.
 
 ### Ubuntu, Debian, or Fedora
 

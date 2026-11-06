@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QFrame,
     QStackedWidget, QSlider, QProgressBar, QFileDialog, QButtonGroup, QSizePolicy, QSpacerItem, QScrollArea, QGridLayout
 )
-from pywizlight import discovery, wizlight, PilotBuilder
+from pywizlight import discovery, wizlight, PilotBuilder, SCENES
 
 APP_NAME = "WiZ Ambient Sync Beta"
 APP_ID = "WiZAmbientSyncBeta"
@@ -171,6 +171,28 @@ class DeviceControlWorker(QThread):
                     level = max(1, min(100, int(self.value)))
                     await asyncio.wait_for(
                         light.turn_on(PilotBuilder(brightness=round(level * 255 / 100))),
+                        timeout=4.0,
+                    )
+                elif self.action == "scene":
+                    scene = dict(self.value or {})
+                    scene_id = int(scene["scene_id"])
+                    speed = max(10, min(200, int(scene.get("speed", 100))))
+                    brightness = max(1, min(100, int(scene.get("brightness", 100))))
+                    await asyncio.wait_for(
+                        light.turn_on(PilotBuilder(
+                            scene=scene_id, speed=speed,
+                            brightness=round(brightness * 255 / 100),
+                        )),
+                        timeout=4.0,
+                    )
+                elif self.action == "color":
+                    colour = dict(self.value or {})
+                    rgb = tuple(max(0, min(255, int(colour[key]))) for key in ("r", "g", "b"))
+                    brightness = max(1, min(100, int(colour.get("brightness", 100))))
+                    await asyncio.wait_for(
+                        light.turn_on(PilotBuilder(
+                            rgb=rgb, brightness=round(brightness * 255 / 100),
+                        )),
                         timeout=4.0,
                     )
                 # Query the WiZ device directly rather than relying on the
@@ -566,6 +588,7 @@ class MainWindow(QMainWindow):
         ("Overview", "◈"),
         ("Visualizer", "≋"),
         ("Music Tuning", "⌁"),
+        ("Scenes", "✦"),
         ("Devices", "▣"),
         ("Settings", "⚙"),
         ("Logs", "≡"),
@@ -574,6 +597,16 @@ class MainWindow(QMainWindow):
         "Subtle": {"bass_sensitivity": 0.90, "mid_sensitivity": 0.90, "high_sensitivity": 0.85, "motion_intensity": 0.80, "transition_speed": 0.85, "transient_strength": 0.80},
         "Balanced": {"bass_sensitivity": 1.00, "mid_sensitivity": 1.00, "high_sensitivity": 1.00, "motion_intensity": 1.00, "transition_speed": 1.00, "transient_strength": 1.00},
         "Dynamic": {"bass_sensitivity": 1.15, "mid_sensitivity": 1.12, "high_sensitivity": 1.25, "motion_intensity": 1.20, "transition_speed": 1.20, "transient_strength": 1.20},
+    }
+    SCENE_PRESETS = {
+        "Cozy evening": (6, 72), "Ocean": (1, 82), "Party": (4, 100),
+        "Forest": (7, 78), "Focus": (15, 90), "Relax": (16, 62),
+        "Daylight": (12, 100), "Night light": (14, 30),
+    }
+    COLOR_CHOICES = {
+        "Sunset": (255, 82, 42), "Ocean blue": (28, 110, 255),
+        "Violet": (150, 60, 255), "Mint": (60, 230, 170),
+        "Warm white": (255, 180, 92), "True white": (255, 255, 255),
     }
     TUNING_LABELS = [
         ("bass_sensitivity", "Bass sensitivity"),
@@ -598,6 +631,7 @@ class MainWindow(QMainWindow):
         self.tuning_file = self.config_file.with_name("tuning.json")
         self.device_control_file = self.config_file.with_name("device_controls.json")
         self.tuning = self.load_tuning()
+        self.scene_settings = self.config.get("scene_settings", {})
         self.theme_mode = self.config.get("app", {}).get("theme", "System")
         self.background_launch = "--background" in sys.argv
         self.device_widgets = {}
@@ -750,6 +784,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.build_overview_page())
         self.stack.addWidget(self.build_visualizer_page())
         self.stack.addWidget(self.build_tuning_page())
+        self.stack.addWidget(self.build_scene_page())
         self.stack.addWidget(self.build_devices_page())
         self.stack.addWidget(self.build_settings_page())
         self.stack.addWidget(self.build_logs_page())
@@ -978,6 +1013,117 @@ class MainWindow(QMainWindow):
         layout.addWidget(note)
         return page
 
+    def build_scene_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 2, 0, 0)
+        layout.setSpacing(13)
+
+        intro, intro_l = self.panel(
+            "Scenes, presets and colours",
+            "Apply a WiZ scene or a colour to all configured lights. Stop music sync before making a manual change."
+        )
+        top = QHBoxLayout()
+        top.addWidget(QLabel("Scene"))
+        self.scene_combo = QComboBox()
+        self.scene_combo.addItems([name for _, name in sorted(SCENES.items(), key=lambda item: item[1].lower())])
+        saved_scene = self.scene_settings.get("scene", "Cozy")
+        if self.scene_combo.findText(saved_scene) >= 0:
+            self.scene_combo.setCurrentText(saved_scene)
+        top.addWidget(self.scene_combo, 1)
+        top.addWidget(QLabel("Speed"))
+        self.scene_speed = QSlider(Qt.Orientation.Horizontal)
+        self.scene_speed.setRange(10, 200)
+        self.scene_speed.setValue(int(self.scene_settings.get("speed", 100)))
+        top.addWidget(self.scene_speed, 1)
+        self.scene_speed_value = QLabel(f"{self.scene_speed.value()}%")
+        self.scene_speed_value.setMinimumWidth(42)
+        self.scene_speed.valueChanged.connect(lambda value: self.scene_speed_value.setText(f"{value}%"))
+        top.addWidget(self.scene_speed_value)
+        intro_l.addLayout(top)
+        scene_brightness = QHBoxLayout()
+        scene_brightness.addWidget(QLabel("Brightness"))
+        self.scene_brightness = QSlider(Qt.Orientation.Horizontal)
+        self.scene_brightness.setRange(1, 100)
+        self.scene_brightness.setValue(int(self.scene_settings.get("brightness", 80)))
+        scene_brightness.addWidget(self.scene_brightness, 1)
+        self.scene_brightness_value = QLabel(f"{self.scene_brightness.value()}%")
+        self.scene_brightness_value.setMinimumWidth(42)
+        self.scene_brightness.valueChanged.connect(lambda value: self.scene_brightness_value.setText(f"{value}%"))
+        scene_brightness.addWidget(self.scene_brightness_value)
+        intro_l.addLayout(scene_brightness)
+        apply_scene = QPushButton("Apply scene")
+        apply_scene.setObjectName("Primary")
+        apply_scene.clicked.connect(self.apply_selected_scene)
+        intro_l.addWidget(apply_scene, 0, Qt.AlignmentFlag.AlignRight)
+        layout.addWidget(intro)
+
+        presets, presets_l = self.panel("Preset modes", "Quick starting points based on WiZ's built-in scene library.")
+        preset_grid = QGridLayout()
+        for index, (name, (scene_id, brightness)) in enumerate(self.SCENE_PRESETS.items()):
+            button = QPushButton(name)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.clicked.connect(lambda checked=False, n=name: self.apply_scene_preset(n))
+            preset_grid.addWidget(button, index // 4, index % 4)
+        presets_l.addLayout(preset_grid)
+        layout.addWidget(presets)
+
+        colours, colours_l = self.panel("Colour selection", "Send a solid colour to every configured light. These choices are stored as your last selection.")
+        colour_grid = QGridLayout()
+        for index, (name, rgb) in enumerate(self.COLOR_CHOICES.items()):
+            button = QPushButton(f"●  {name}")
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setStyleSheet(f"QPushButton {{ border-left: 18px solid rgb({rgb[0]},{rgb[1]},{rgb[2]}); }}")
+            button.clicked.connect(lambda checked=False, n=name: self.apply_selected_color(n))
+            colour_grid.addWidget(button, index // 3, index % 3)
+        colours_l.addLayout(colour_grid)
+        layout.addWidget(colours)
+        layout.addStretch(1)
+        return page
+
+    def _manual_controls_allowed(self):
+        if self.process.state() != QProcess.ProcessState.NotRunning:
+            QMessageBox.information(self, "Stop sync first", "Manual scenes and colours are unavailable while music sync is running.")
+            return False
+        if not self.configured_control_devices():
+            QMessageBox.information(self, "No devices configured", "Add at least one WiZ device in Devices before applying a scene or colour.")
+            return False
+        return True
+
+    def apply_scene_preset(self, name):
+        scene_id, brightness = self.SCENE_PRESETS[name]
+        self.scene_combo.setCurrentText(SCENES[scene_id])
+        self.scene_brightness.setValue(brightness)
+        self.apply_selected_scene()
+
+    def apply_selected_scene(self):
+        if not self._manual_controls_allowed():
+            return
+        name = self.scene_combo.currentText()
+        scene_id = next((key for key, value in SCENES.items() if value == name), None)
+        if scene_id is None:
+            return
+        self.scene_settings = {"scene": name, "speed": self.scene_speed.value(), "brightness": self.scene_brightness.value()}
+        self.config["scene_settings"] = self.scene_settings
+        self.save_settings()
+        for _, ip in self.configured_control_devices():
+            self.run_device_action(ip, "scene", {"scene_id": scene_id, "speed": self.scene_speed.value(), "brightness": self.scene_brightness.value()})
+        self.footer_status.setText(f"Scene applied: {name}")
+        self.append_log(f"Applied WiZ scene '{name}' to configured devices.", "Info")
+
+    def apply_selected_color(self, name):
+        if not self._manual_controls_allowed():
+            return
+        rgb = self.COLOR_CHOICES[name]
+        self.scene_settings = {"color": name, "brightness": self.scene_brightness.value()}
+        self.config["scene_settings"] = self.scene_settings
+        self.save_settings()
+        payload = {"r": rgb[0], "g": rgb[1], "b": rgb[2], "brightness": self.scene_brightness.value()}
+        for _, ip in self.configured_control_devices():
+            self.run_device_action(ip, "color", payload)
+        self.footer_status.setText(f"Colour applied: {name}")
+        self.append_log(f"Applied colour '{name}' to configured devices.", "Info")
+
     def build_devices_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -1122,12 +1268,13 @@ class MainWindow(QMainWindow):
             "Your lights, in rhythm.",
             "See the music that is moving your lights.",
             "Shape how the engine responds to music.",
+            "Choose a WiZ scene, preset mode, or colour.",
             "Discover and manage your WiZ devices.",
             "Make the application work the way you prefer.",
             "Technical events, without the metric noise.",
         ]
         self.page_subtitle.setText(subtitles[index])
-        if index == 5:
+        if index == 6:
             self.refresh_logs()
 
     def on_tuning_changed(self, key, value, label):
@@ -1980,7 +2127,7 @@ class MainWindow(QMainWindow):
         stamp = datetime.now().strftime("%H:%M:%S")
         self.log_entries.append((stamp, level, str(message)))
         self.log_entries = self.log_entries[-1000:]
-        if self.current_page == 5:
+        if self.current_page == 6:
             self.refresh_logs()
 
     def refresh_logs(self):
@@ -2018,7 +2165,7 @@ class MainWindow(QMainWindow):
         icon_file = resource_path("app_icon.png")
         tray_icon = QIcon(str(icon_file)) if icon_file.exists() else self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
         self.tray = QSystemTrayIcon(tray_icon, self)
-        self.tray.setToolTip(APP_NAME)
+        self.tray.setToolTip("WiZ Ambient Sync")
         menu = QMenu()
         self.tray_menu = menu
         show_action = QAction("Open WiZ Ambient Sync", self)

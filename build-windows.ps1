@@ -14,10 +14,12 @@ if (-not (Test-Path ".venv")) {
 & ".\.venv\Scripts\python.exe" -m pip install -r requirements.txt
 & ".\.venv\Scripts\python.exe" build.py
 
-if (-not (Test-Path ".\dist\1.2.2-beta.1\WiZAmbientSync.exe")) {
+$version = (Get-Content ".\VERSION" -Raw).Trim()
+$distPath = Join-Path ".\dist" $version
+if (-not (Test-Path (Join-Path $distPath "WiZAmbientSync.exe"))) {
     throw "GUI executable was not produced."
 }
-if (-not (Test-Path ".\dist\1.2.2-beta.1\wiz-engine.exe")) {
+if (-not (Test-Path (Join-Path $distPath "wiz-engine.exe"))) {
     throw "WiZ engine executable was not produced."
 }
 
@@ -38,5 +40,5 @@ if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE
 
 Write-Host ""
 Write-Host "Build complete:" -ForegroundColor Green
-Write-Host "  Portable app: .\dist\1.2.2-beta.1\WiZAmbientSync.exe (keep wiz-engine.exe beside it)"
-Write-Host "  Installer:    .\installer-output\WiZ-Ambient-Sync-Beta-Setup-1.2.2-beta.1-x64.exe"
+Write-Host "  Portable app: .\dist\$version\WiZAmbientSync.exe (keep wiz-engine.exe beside it)"
+Write-Host "  Installer:    .\installer-output\ (version $version)"
