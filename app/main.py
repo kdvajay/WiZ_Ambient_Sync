@@ -11,13 +11,13 @@ from pathlib import Path
 import mss
 from platformdirs import user_config_dir
 from PySide6.QtCore import QProcess, QProcessEnvironment, Qt, QThread, Signal, QTimer, QSize
-from PySide6.QtGui import QAction, QIcon, QColor, QFont, QLinearGradient, QPainter, QPen, QBrush, QPalette
+from PySide6.QtGui import QAction, QIcon, QColor, QFont, QLinearGradient, QPainter, QPen, QBrush, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFormLayout, QGroupBox, QHBoxLayout,
     QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QPlainTextEdit,
     QSystemTrayIcon, QMenu, QVBoxLayout, QWidget, QStyle, QDialog,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QFrame,
-    QStackedWidget, QSlider, QProgressBar, QFileDialog, QButtonGroup, QSizePolicy, QSpacerItem, QScrollArea, QGridLayout
+    QStackedWidget, QSlider, QProgressBar, QFileDialog, QColorDialog, QButtonGroup, QSizePolicy, QSpacerItem, QScrollArea, QGridLayout
 )
 from pywizlight import discovery, wizlight, PilotBuilder, SCENES
 
@@ -1021,7 +1021,7 @@ class MainWindow(QMainWindow):
 
         intro, intro_l = self.panel(
             "Scenes, presets and colours",
-            "Apply a WiZ scene or a colour to all configured lights. Stop music sync before making a manual change."
+            "Scenes and preset modes apply to every configured light and turn it on. Use Devices to set a different colour on each light. Stop music sync before making a manual change."
         )
         top = QHBoxLayout()
         top.addWidget(QLabel("Scene"))
@@ -1068,7 +1068,7 @@ class MainWindow(QMainWindow):
         presets_l.addLayout(preset_grid)
         layout.addWidget(presets)
 
-        colours, colours_l = self.panel("Colour selection", "Send a solid colour to every configured light. These choices are stored as your last selection.")
+        colours, colours_l = self.panel("Colour selection", "Apply one colour to all configured lights. For individual colours, use the Colour button on each light in Devices.")
         colour_grid = QGridLayout()
         for index, (name, rgb) in enumerate(self.COLOR_CHOICES.items()):
             button = QPushButton(f"●  {name}")
@@ -1103,10 +1103,14 @@ class MainWindow(QMainWindow):
         scene_id = next((key for key, value in SCENES.items() if value == name), None)
         if scene_id is None:
             return
-        self.scene_settings = {"scene": name, "speed": self.scene_speed.value(), "brightness": self.scene_brightness.value()}
+        self.scene_settings = dict(self.scene_settings)
+        self.scene_settings.update({"scene": name, "speed": self.scene_speed.value(), "brightness": self.scene_brightness.value()})
         self.config["scene_settings"] = self.scene_settings
         self.save_settings()
         for _, ip in self.configured_control_devices():
+            # A scene/mode is an explicit group action. It must wake a light
+            # that was previously disabled by its individual power toggle.
+            self.set_device_enabled(ip, True)
             self.run_device_action(ip, "scene", {"scene_id": scene_id, "speed": self.scene_speed.value(), "brightness": self.scene_brightness.value()})
         self.footer_status.setText(f"Scene applied: {name}")
         self.append_log(f"Applied WiZ scene '{name}' to configured devices.", "Info")
@@ -1115,14 +1119,84 @@ class MainWindow(QMainWindow):
         if not self._manual_controls_allowed():
             return
         rgb = self.COLOR_CHOICES[name]
-        self.scene_settings = {"color": name, "brightness": self.scene_brightness.value()}
+        self.scene_settings = dict(self.scene_settings)
+        self.scene_settings.update({"color": name, "brightness": self.scene_brightness.value()})
         self.config["scene_settings"] = self.scene_settings
         self.save_settings()
         payload = {"r": rgb[0], "g": rgb[1], "b": rgb[2], "brightness": self.scene_brightness.value()}
+        device_colors = dict(self.scene_settings.get("device_colors", {}))
         for _, ip in self.configured_control_devices():
+            self.set_device_enabled(ip, True)
+            device_colors[str(ip)] = {"name": name, "r": rgb[0], "g": rgb[1], "b": rgb[2]}
             self.run_device_action(ip, "color", payload)
+        self.scene_settings["device_colors"] = device_colors
+        self.config["scene_settings"] = self.scene_settings
+        self.save_settings()
+        self.refresh_colour_button_swatches()
         self.footer_status.setText(f"Colour applied: {name}")
         self.append_log(f"Applied colour '{name}' to configured devices.", "Info")
+
+    def current_device_color(self, ip):
+        saved = self.scene_settings.get("device_colors", {}).get(str(ip), {})
+        try:
+            return tuple(max(0, min(255, int(saved[key]))) for key in ("r", "g", "b"))
+        except (KeyError, TypeError, ValueError):
+            name = self.scene_settings.get("color")
+            return self.COLOR_CHOICES.get(name, (255, 255, 255))
+
+    @staticmethod
+    def set_colour_button_swatch(button, rgb):
+        size = 20
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor("#FFFFFF"), 1.5))
+        painter.setBrush(QBrush(QColor(*rgb)))
+        painter.drawEllipse(2, 2, size - 4, size - 4)
+        painter.end()
+        button.setIcon(QIcon(pixmap))
+        button.setIconSize(QSize(size, size))
+        button.setToolTip(f"Current colour: RGB {rgb[0]}, {rgb[1]}, {rgb[2]} · click to change")
+
+    def make_colour_button(self, ip, name):
+        button = QPushButton("Choose colour")
+        button.setObjectName("ColourButton")
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.clicked.connect(lambda checked=False, target=ip, device_name=name: self.apply_device_color(target, device_name))
+        self.set_colour_button_swatch(button, self.current_device_color(ip))
+        return button
+
+    def refresh_colour_button_swatches(self):
+        for ip, controls in self.device_widgets.items():
+            button = controls.get("color")
+            if button:
+                self.set_colour_button_swatch(button, self.current_device_color(ip))
+        for ip, controls in self.overview_device_widgets.items():
+            button = controls.get("color")
+            if button:
+                self.set_colour_button_swatch(button, self.current_device_color(ip))
+
+    def apply_device_color(self, ip, name):
+        """Apply a colour to one light without changing the others."""
+        if not self._manual_controls_allowed():
+            return
+        initial = QColor(*self.current_device_color(ip))
+        colour = QColorDialog.getColor(initial, self, f"Choose colour for {name}")
+        if not colour.isValid():
+            return
+        rgb = (colour.red(), colour.green(), colour.blue())
+        device_colors = dict(self.scene_settings.get("device_colors", {}))
+        device_colors[str(ip)] = {"name": name, "r": rgb[0], "g": rgb[1], "b": rgb[2]}
+        self.scene_settings = dict(self.scene_settings)
+        self.scene_settings["device_colors"] = device_colors
+        self.config["scene_settings"] = self.scene_settings
+        self.save_settings()
+        self.set_device_enabled(ip, True)
+        self.run_device_action(ip, "color", {"r": rgb[0], "g": rgb[1], "b": rgb[2], "brightness": self.scene_brightness.value()})
+        self.refresh_colour_button_swatches()
+        self.footer_status.setText(f"Colour applied to {name}")
+        self.append_log(f"Applied an individual colour to {name} ({ip}).", "Info")
 
     def build_devices_page(self):
         page = QWidget()
@@ -1410,11 +1484,14 @@ class MainWindow(QMainWindow):
             brightness_row.addWidget(slider, 1)
             brightness_row.addWidget(value)
             tile_layout.addLayout(brightness_row)
+            colour_button = self.make_colour_button(ip, name)
+            tile_layout.addWidget(colour_button, 0, Qt.AlignmentFlag.AlignRight)
             tile.setToolTip(ip)
             row, column = divmod(index, columns)
             self.overview_device_cards_layout.addWidget(tile, row, column)
             self.overview_device_widgets[ip] = {
                 "status": status, "power": switch, "slider": slider, "value": value,
+                "color": colour_button,
                 "last_known_on": None, "last_known_brightness": None,
             }
 
@@ -1510,10 +1587,12 @@ class MainWindow(QMainWindow):
             bottom.addWidget(slider, 1)
             bottom.addWidget(value_label)
             row.addLayout(bottom)
+            colour_button = self.make_colour_button(ip, name)
+            row.addWidget(colour_button, 0, Qt.AlignmentFlag.AlignRight)
             self.device_cards_layout.addWidget(card)
             self.device_widgets[ip] = {
                 "status": status, "power": power, "slider": slider,
-                "value": value_label, "name": name, "last_known_on": None,
+                "value": value_label, "color": colour_button, "name": name, "last_known_on": None,
                 "last_known_brightness": None,
             }
 
@@ -1838,6 +1917,12 @@ class MainWindow(QMainWindow):
             QPushButton:hover {{ background:{hover}; border-color:{accent}; }}
             QPushButton:pressed {{ background:{selected}; }}
             QPushButton:disabled {{ color:{muted}; background:{field}; border-color:{border}; }}
+            QPushButton#ColourButton {{
+                background:{accent_soft}; border:1px solid {accent}; color:{text};
+                border-radius:14px; padding:5px 11px; font-weight:650;
+            }}
+            QPushButton#ColourButton:hover {{ background:{accent}; color:white; border-color:{accent}; }}
+            QPushButton#ColourButton:pressed {{ background:{handle}; color:white; border-color:{handle}; }}
             QPushButton#Primary {{
                 background:{accent}; border:1px solid {accent}; border-radius:20px;
                 color:white; font-weight:650;

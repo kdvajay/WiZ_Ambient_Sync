@@ -1,3 +1,9 @@
+# WiZ Ambient Sync 2.0.1
+
+- Scenes and preset modes now apply to every configured light, including lights previously switched off individually.
+- Added individual per-light colour selection on the Home dashboard and Devices page.
+- Added dynamic colour swatches that show each light's current saved colour.
+
 # WiZ Ambient Sync 1.2.2-beta.1
 
 - Fixed the Light-theme device discovery dialog, including its table, viewport and role selectors.
