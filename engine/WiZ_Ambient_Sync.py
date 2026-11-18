@@ -140,6 +140,9 @@ DEVICE_ERROR_LOG_INTERVAL = float(
 STRIP_COLOUR_SMOOTHING = float(
     MULTI_DEVICE_CONFIG.get("strip_colour_smoothing", 0.88)
 )
+STRIP_SCENE_CHANGE_SMOOTHING = float(
+    MULTI_DEVICE_CONFIG.get("strip_scene_change_smoothing", 0.84)
+)
 STRIP_MIN_SEND_INTERVAL = float(
     MULTI_DEVICE_CONFIG.get("strip_min_send_interval", 0.10)
 )
@@ -1399,6 +1402,9 @@ async def main():
     )
 
     previous_onset_signal = 0.0
+    # Preserve short audio transients until the next lighting update. Without this latch, a kick occurring between output ticks can be missed.
+    pending_transient_strength = 0.0
+    pending_impact_strength = 0.0
 
 
     # ========================================================
@@ -1857,6 +1863,13 @@ async def main():
                 )
             )
 
+            pending_transient_strength = max(
+                pending_transient_strength, transient_strength
+            )
+            pending_impact_strength = max(
+                pending_impact_strength, impact_strength
+            )
+
 
             if impact_strength >= IMPACT_MAJOR:
 
@@ -1901,23 +1914,34 @@ async def main():
                 # =============================================
 
                 impact_triggered = False
+                update_transient_strength = pending_transient_strength
+                update_impact_strength = pending_impact_strength
+
+                if update_impact_strength >= IMPACT_MAJOR:
+                    update_impact_class = "MAJOR"
+                elif update_impact_strength >= IMPACT_STRONG:
+                    update_impact_class = "STRONG"
+                elif update_impact_strength >= IMPACT_NORMAL:
+                    update_impact_class = "NORMAL"
+                else:
+                    update_impact_class = "NONE"
 
                 if (
-                    transient_strength >= ONSET_THRESHOLD
-                    and impact_strength >= IMPACT_NORMAL
-                    and now - last_impact_time >= 0.12
+                    update_transient_strength >= ONSET_THRESHOLD
+                    and update_impact_strength >= IMPACT_NORMAL
+                    and now - last_impact_time >= 0.08
                 ):
 
                     impact_triggered = True
                     last_impact_time = now
 
-                    if impact_class == "MAJOR":
+                    if update_impact_class == "MAJOR":
 
                         impulse = (
                             FLOW_MAJOR_IMPULSE
                         )
 
-                    elif impact_class == "STRONG":
+                    elif update_impact_class == "STRONG":
 
                         impulse = (
                             FLOW_STRONG_IMPULSE
@@ -1929,13 +1953,13 @@ async def main():
                             FLOW_NORMAL_IMPULSE
                         )
 
-                    if impact_class == "MAJOR":
+                    if update_impact_class == "MAJOR":
 
                         brightness_pulse += (
                             MAJOR_IMPACT_BOOST
                         )
 
-                    elif impact_class == "STRONG":
+                    elif update_impact_class == "STRONG":
 
                         brightness_pulse += (
                             STRONG_IMPACT_BOOST
@@ -1951,7 +1975,7 @@ async def main():
                         np.clip(
                             brightness_pulse,
                             0.0,
-                            12.0
+                            18.0
                         )
                     )
 
@@ -1960,13 +1984,19 @@ async def main():
                     impulse *= (
                         0.75
                         + 0.50
-                        * impact_strength
+                        * update_impact_strength
                     )
 
                     flow_momentum += impulse * live_tuning["transient_strength"]
 
 
                 # =============================================
+                # Clear the peak latch only after this output tick has
+                # consumed it, so brief kicks are not lost between updates.
+                pending_transient_strength = 0.0
+                pending_impact_strength = 0.0
+
+
                 # MOMENTUM DECAY
                 # =============================================
 
@@ -2422,7 +2452,10 @@ async def main():
                             np.clip(STRIP_COLOUR_SMOOTHING, 0.0, 1.0)
                         )
                         if scene_change:
-                            strip_smoothing = max(strip_smoothing, 0.94)
+                            strip_smoothing = max(
+                                strip_smoothing,
+                                STRIP_SCENE_CHANGE_SMOOTHING
+                            )
 
                         if strip_target_rgb is not None:
                             strip_smooth_rgb += (
@@ -2538,7 +2571,7 @@ async def main():
                     )
 
                     event = (
-                        impact_class
+                        update_impact_class
                         if impact_triggered
                         else "----"
                     )
