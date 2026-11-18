@@ -19,10 +19,12 @@ function Require-Command([string]$Name) {
 function Convert-ToPackageVersion([string]$Value) {
     $match = [regex]::Match($Value, '^([0-9]+)(?:\.([0-9]+))?(?:\.([0-9]+))?(?:\.([0-9]+))?')
     if (-not $match.Success) { throw "VERSION '$Value' does not start with a numeric version." }
-    $parts = @($match.Groups[1].Value, $match.Groups[2].Value, $match.Groups[3].Value, $match.Groups[4].Value) | ForEach-Object {
+    # Microsoft Store requires the MSIX Identity revision (fourth component)
+    # to be zero. Keep any fourth VERSION component as build metadata only.
+    $parts = @($match.Groups[1].Value, $match.Groups[2].Value, $match.Groups[3].Value) | ForEach-Object {
         if ($_ -eq '') { '0' } else { $_ }
     }
-    return $parts -join '.'
+    return (($parts -join '.') + '.0')
 }
 
 if ($IdentityName -match '[^A-Za-z0-9.\-]') { throw "IdentityName contains unsupported MSIX characters: $IdentityName" }

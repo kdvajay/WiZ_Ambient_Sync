@@ -15,8 +15,11 @@ python build.py
   -Publisher "<Partner Center publisher>"
 ```
 
-The script reads `VERSION`, converts `2.0.0` to the numeric MSIX
-version `2.0.0.0`, stages the existing `WiZAmbientSync.exe` and
+The script reads `VERSION`, converts its first three numeric components to
+the MSIX version and always sets the required fourth component to zero. For
+example, `2.0.1.1` becomes the package version `2.0.1.0`. The fourth
+`VERSION` component is treated as build metadata. The script stages the
+existing `WiZAmbientSync.exe` and
 `wiz-engine.exe`, and creates an x64 package under `msix-output`.
 
 `makeappx.exe` is required. It is normally available in a Windows development
