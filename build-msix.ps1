@@ -17,12 +17,12 @@ function Require-Command([string]$Name) {
 }
 
 function Convert-ToPackageVersion([string]$Value) {
-    $match = [regex]::Match($Value, '^([0-9]+)(?:\.([0-9]+))?(?:\.([0-9]+))?')
+    $match = [regex]::Match($Value, '^([0-9]+)(?:\.([0-9]+))?(?:\.([0-9]+))?(?:\.([0-9]+))?')
     if (-not $match.Success) { throw "VERSION '$Value' does not start with a numeric version." }
-    $parts = @($match.Groups[1].Value, $match.Groups[2].Value, $match.Groups[3].Value) | ForEach-Object {
+    $parts = @($match.Groups[1].Value, $match.Groups[2].Value, $match.Groups[3].Value, $match.Groups[4].Value) | ForEach-Object {
         if ($_ -eq '') { '0' } else { $_ }
     }
-    return ($parts + '0') -join '.'
+    return $parts -join '.'
 }
 
 if ($IdentityName -match '[^A-Za-z0-9.\-]') { throw "IdentityName contains unsupported MSIX characters: $IdentityName" }
