@@ -4,6 +4,7 @@ import warnings
 from collections import deque
 import json
 import os
+import socket
 from pathlib import Path
 
 import mss
@@ -133,6 +134,15 @@ STRIP_MIN_BRIGHTNESS = int(
 )
 DEVICE_RETRY_INTERVAL = float(
     MULTI_DEVICE_CONFIG.get("retry_interval", 5.0)
+)
+# A failed strip update should recover quickly: the sender retains only the
+# newest colour, so a short retry does not create a backlog of stale frames.
+STRIP_RETRY_INTERVAL = float(
+    MULTI_DEVICE_CONFIG.get("strip_retry_interval", 0.5)
+)
+# Log unusually slow successful sends as well as failed-send duration.
+STRIP_SLOW_SEND_LOG_THRESHOLD = float(
+    MULTI_DEVICE_CONFIG.get("strip_slow_send_log_threshold", 0.25)
 )
 DEVICE_ERROR_LOG_INTERVAL = float(
     MULTI_DEVICE_CONFIG.get("error_log_interval", 5.0)
@@ -1183,6 +1193,14 @@ async def device_sender(
         else BULB_MIN_SEND_INTERVAL
     )
     last_send = -999.0
+    strip_udp_socket = None
+    if role == "strip":
+        strip_udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # Explicitly bind the UDP socket before recvfrom(). On Windows, trying
+        # to drain a never-bound UDP socket can raise WSAEINVAL (WinError 10022).
+        # Port 0 asks Windows to assign an available ephemeral local port.
+        strip_udp_socket.bind(("0.0.0.0", 0))
+        strip_udp_socket.setblocking(False)
 
     while True:
         await command_events[name].wait()
@@ -1215,18 +1233,61 @@ async def device_sender(
             device_states[name] = False
             continue
 
+        send_started = loop.time()
         try:
-            await device["light"].turn_on(
-                PilotBuilder(rgb=rgb, brightness=brightness)
-            )
+            if role == "strip":
+                # Music-reactive strip updates are latency-sensitive. pywizlight
+                # waits for a UDP acknowledgement and retries for ~13 seconds
+                # when one is missing. Send the same setPilot payload once via
+                # UDP instead; the next audio frame naturally supersedes it.
+                # This confirms local socket dispatch only, not bulb receipt.
+                pilot_message = PilotBuilder(
+                    rgb=rgb, brightness=brightness
+                ).set_pilot_message(state=True)
+                signing_key = getattr(device["light"], "signing_key", None)
+                if signing_key:
+                    from pywizlight.utils import sign_request
+                    pilot_message = sign_request(pilot_message, signing_key)
+                payload = json.dumps(
+                    pilot_message, separators=(",", ":")
+                ).encode("utf-8")
+                # Drain any acknowledgements from previous frames without
+                # waiting for them, then dispatch the newest packet.
+                while True:
+                    try:
+                        strip_udp_socket.recvfrom(4096)
+                    except BlockingIOError:
+                        break
+                strip_udp_socket.sendto(payload, (ip, 38899))
+            else:
+                await device["light"].turn_on(
+                    PilotBuilder(rgb=rgb, brightness=brightness)
+                )
+
+            send_duration = loop.time() - send_started
             last_send = loop.time()
             was_unavailable = device_states[name] is False
+            # For the strip, True means the packet was dispatched locally;
+            # UDP provides no delivery acknowledgement in this fast path.
             device_states[name] = True
+
+            slow_log_key = f"{name}_slow_send"
+            if (
+                role == "strip"
+                and send_duration >= STRIP_SLOW_SEND_LOG_THRESHOLD
+                and last_send - device_last_error_log.get(slow_log_key, -999.0) >= 5.0
+            ):
+                print(
+                    f"\\nWiZ Strip ({ip}) slow local UDP dispatch: "
+                    f"{send_duration:.3f}s (colour {rgb}, brightness {brightness})."
+                )
+                device_last_error_log[slow_log_key] = last_send
 
             if was_unavailable:
                 print(f"\\nWiZ {name} ({ip}) reconnected.")
 
         except Exception as exc:
+            send_duration = loop.time() - send_started
             device_states[name] = False
             error_time = loop.time()
 
@@ -1235,14 +1296,19 @@ async def device_sender(
                 >= DEVICE_ERROR_LOG_INTERVAL
             ):
                 print(
-                    f"\\nWiZ {name} ({ip}) unavailable: "
-                    f"{type(exc).__name__}: {exc}"
+                    f"\\nWiZ {name} ({ip}) unavailable after "
+                    f"{send_duration:.3f}s: {type(exc).__name__}: {exc}"
                 )
                 device_last_error_log[name] = error_time
 
-            # Keep running independently. The latest command is retried
-            # after the configured delay; other devices are unaffected.
-            await asyncio.sleep(DEVICE_RETRY_INTERVAL)
+            # The strip retries quickly using the latest-command slot; it
+            # never replays a queue of old music frames. Bulb retry behaviour
+            # remains unchanged.
+            retry_interval = (
+                STRIP_RETRY_INTERVAL if role == "strip"
+                else DEVICE_RETRY_INTERVAL
+            )
+            await asyncio.sleep(max(0.05, retry_interval))
             command_events[name].set()
             continue
 
